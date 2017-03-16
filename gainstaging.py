@@ -3,44 +3,120 @@
 from math import log10, sqrt
 
 class Level():
-    references = {'SPL':0.00002,
-                  'Pa': 1.0,
-                  'V':  1.0,
-                  'FS': 1.0,
-                  'mV': 0.001,
-                  'u':  0.775}
+    """
+    A class to represent audio levels.  It stores an RMS level in the SI unit
+    of the field/domain, i.e. Pa for pressure, V for electrical, and FS (full
+    scale sine) for digital, and the type of field/domain.
+    
+    levels can be set using a value-field pair, or with a string in many
+    natural forms.
+
+    >>> x = Level(1, 'P'); [x.value, x.field]
+    [1.0, 'P']
+    >>> x = Level("1Pa"); [x.value, x.field] 
+    [1.0, 'P']
+    >>> x = Level("1 Pa"); [x.value, x.field] 
+    [1.0, 'P']
+    >>> x = Level("0dB Pa"); [x.value, x.field] 
+    [1.0, 'P']
+    >>> x = Level("0 dB(Pa)"); [x.value, x.field] 
+    [1.0, 'P']
+    >>> x = Level("94 dB SPL"); [x.value, x.field] #doctest: +ELLIPSIS 
+    [1.00..., 'P']
+    >>> x = Level("1V"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("1000 mV"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("1µV"); [x.value, x.field] 
+    [1e-06, 'V']
+    >>> x = Level("1nV"); [x.value, x.field] 
+    [1e-09, 'V']
+    >>> x = Level("1kV"); [x.value, x.field] 
+    [1000.0, 'V']
+    >>> x = Level("1MV"); [x.value, x.field] 
+    [1000000.0, 'V']
+    >>> x = Level("1GV"); [x.value, x.field] 
+    [1000000000.0, 'V']
+    >>> x = Level("0dBV"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("0dB(1V)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("60dB(mV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("120dB(µV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("180dB(nV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("-60dB(kV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("-120dB(MV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("-180dB(GV)"); [x.value, x.field] 
+    [1.0, 'V']
+    >>> x = Level("0 dBu"); [x.value, x.field] 
+    [0.775, 'V']
+    >>> x = Level("1 FS"); [x.value, x.field] 
+    [1.0, 'D']
+    >>> x = Level("0dBFS"); [x.value, x.field] 
+    [1.0, 'D']
+    >>> x = Level("0 dB (FS)"); [x.value, x.field] 
+    [1.0, 'D']
+
+    """
+    references = {'SPL': (0.00002, 'P'),
+                  'Pa':  (1.0,     'P'),
+                  'V':   (1.0,     'V'),
+                  'FS':  (1.0,     'D'),
+                  'mV':  (0.001,   'V'),
+                  'u':   (0.775,   'V')}
     def __init__(self, value = 0, field = ''):
+        """
+        Check if 'value' is a number, in which case simply using arguments.
+        Otherwise, parse 'value' for dB, references, etc.
+        """
+        SI = {'G':1e9, 'M':1e6, 'k':1e3, 'm':1e-3, u'µ':1e-6, 'n':1e-9, \
+              ' ':1}
+        self.field = field
         if type(value) in (int, float):
-            self.value = value
-            self.field = field
-        elif 'dB' in value:
-            [v,ref] = value.split('dB',1)
-            ref = ref.strip(' 1()')
-            if   ref == 'SPL' or ref == 'Pa':
-                self.field = 'P'
-            elif ref == 'u' or 'V' in ref:
-                self.field = 'V'
-            elif ref ==('FS'):
-                self.field = 'D'
-            self.value = dbta(float(v)) * Level.references[ref.strip(' 1()')]
-        elif value.endswith('FS'):
-            self.field = 'D'
-            self.value = value.rstrip('FS')
-        elif value.endswith('V'):
-            self.field = 'V'
-            self.value = value.rstrip('V')
-        elif value.endswith('Pa'):
-            self.field = 'P'
-            self.value = value.rstrip('Pa')
+            self.value = float(value)
         else:
-            self.value = value
-            self.field = field
-        SI = {'G':1e9, 'M':1e6, 'k':1e3, 'm':1e-3, 'µ':1e-6, 'n':1e-9, ' ':1}
-        try:
-            self.value = float(self.value)
-        except ValueError:
-            self.value = float(self.value[:-1]) * SI[self.value[-1]]
+            if type(value) == str:
+                value = unicode(value, 'utf-8')
+            for i in range(len(value), 0, -1):
+                try:
+                    self.value = float(value[:i])
+                    ref = value[i:].strip()
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise ValueError("Could not parse '"+value+"' into a level.")
+
+            if ref.startswith('dB'):
+                self.value = dbta(self.value)
+                ref = ref.split('dB', 1)[1].strip(' 1()')
+                
+            for i in Level.references:
+                if ref.endswith(i):
+                    self.value *= Level.references[i][0]
+                    self.field =  Level.references[i][1]
+                    ref = ref.rsplit(i, 1)[0].strip()
+            for i in SI:
+                if ref.endswith(i):
+                    self.value *= SI[i]
+                    ref = ref.rsplit(i, 1)[0].strip()
+            if ref:
+                raise ValueError("Could not parse the units '"+ref+"'")
+    
     def __repr__(self):
+        """
+        >>> Level("0dBu")
+        0.775 Voltage (Volts)
+        >>> Level("0dB SPL")
+        2e-05 Pressure (Pascals)
+        >>> Level("0dBFS")
+        1.0 Digital (w.r.t. FSS)
+        """
         return str(self.value)+' '+ \
                {'P':'Pressure (Pascals)', \
                 'V':'Voltage (Volts)',\
@@ -49,9 +125,16 @@ class Level():
         """
         Return value in dB relative to reference.
         Recognises 'SPL', 'u', 'mV', and 'Pa', 'V', 'FS'
+        
+        >>> Level(1, 'P').dB()
+        0.0
+        >>> round( Level(1, 'P').dB('SPL')  , 1)
+        94.0
+        >>> Level(1, 'V').dB('u') #doctest: +ELLIPSIS
+        2.2...
         """
         if reference in Level.references:
-            reference = Level.references[reference]
+            reference = Level.references[reference][0]
         #try:
         #reference = float(reference)
         #except ValueError:
@@ -60,13 +143,14 @@ class Level():
         else:
             return 20*log10(self.value / reference)
 
-references = {'Pa': Level("1 Pa") \
+'''references = {'Pa': Level("1 Pa") \
              ,'SPL':Level("0.00002 Pa") \
              ,'FS': Level(1,'FS') \
              ,'V':  Level("1 V") \
              ,'mV': Level("0.001 V") \
              ,'u':  Level("0.775 V") \
              }
+             '''
 fields2SI = {'P':'Pa', 'V':'V', 'D':'FSS'}
 
 class Gain():
@@ -121,7 +205,7 @@ class GainStructure():
     Levels are internally stored in SI RMS values (Pa, V, FSS)
     """
 
-    from math import log10, sqrt
+    #from math import log10, sqrt
     
     #def Level as [number, unitid]
     def __init__(self):
