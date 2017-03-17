@@ -389,6 +389,10 @@ def levelAtZone(gainsList, level, returnZone):
                      Level("1V", zone=0), \
                      2)
     0.2 FS zone: 2
+    >>> levelAtZone( [ Gain("2V/V"), Gain("0.1 FS/V") ], \
+                     Level("0.2 FS", zone=2), \
+                     0)
+    1.0 V zone: 0
     """
     originalZone = level.zone
     if (originalZone == returnZone):
@@ -400,7 +404,7 @@ def levelAtZone(gainsList, level, returnZone):
         return ret
     elif (originalZone > returnZone):
         ret = level
-        for i in range(returnZone, originalZone):
+        for i in range(originalZone - 1, returnZone - 1, -1):
             ret = ret / gainsList[i]
         return ret
     else:
@@ -425,6 +429,43 @@ def powersum(gainsList, levelList, returnZone):
         sumOfSquares += atp(levelAtZone(gainsList, level, returnZone).value)
     return Level(str(pta(sumOfSquares)) + fields2SI[returnField], returnZone)
 
+def findClip(gainsList, levelList):
+    """Find which level in levelList is the lowest (and would clip the system)
+
+    Accepts wither a List or a Dict for argument levelList
+    >>> findClip( [ Gain("+18dBu","0dBFS") ], \
+                  [ Level("0dBu", 0), Level("0dBFS", 1) ] )
+    0.775 V zone: 0
+    >>> findClip( [ Gain("+18dBu","0dBFS") ], \
+                  [ Level("+24dBu", 0), Level("0dBFS", 1) ] )
+    1.0 FS zone: 1
+
+    >>> findClip( [ Gain("15mV/Pa"), Gain("+10dBu","1FS") ], \
+                  { 'Mic': Level("132dB SPL", 0), 'ADC': Level("0dBFS", 2) } ) \
+                                          #doctest: +ELLIPSIS
+    {'Mic': 79.6... Pa zone: 0}
+    >>> findClip( [ Gain("40mV/Pa"), Gain("+10dBu","1FS") ], \
+                  { 'Mic': Level("132dB SPL", 0), 'ADC': Level("0dBFS", 2) } )
+    {'ADC': 1.0 FS zone: 2}
+    """
+    clip = float('+inf')
+    
+    if isinstance(levelList, dict):
+        for i in levelList:
+            temp = levelAtZone(gainsList, levelList[i], 0)
+            if temp.value < clip:
+                clip = temp.value
+                clipper = i
+        return {clipper: levelList[clipper]}
+    elif isinstance(levelList, list):
+        for level in levelList:
+            temp = levelAtZone(gainsList, level, 0)
+            if temp.value < clip:
+                clip = temp.value
+                clipper = level
+        return clipper
+    else:
+        raise TypeError
 
 if __name__ == "__main__":
     """"gs = GainStructure()
