@@ -2,17 +2,18 @@
 # coding=utf-8
 from math import log10, sqrt
 
+fields2SI = {'P':'Pa', 'V':'V', 'D':'FS'}
+
 class Level():
     """
     A class to represent audio levels.  It stores an RMS level in the SI unit
     of the field/domain, i.e. Pa for pressure, V for electrical, and FS (full
     scale sine) for digital, and the type of field/domain.
     
-    levels can be set using a value-field pair, or with a string in many
-    natural forms.
+    Levels are set by passing a string which can be parsed as a float appended
+    with units.
+    "<floating-point parsable string>[ ][dB[ (]][<SI-prefix>][Pa|SPL|V|u|FS]"
 
-    >>> x = Level(1, 'P'); [x.value, x.field]
-    [1.0, 'P']
     >>> x = Level("1Pa"); [x.value, x.field] 
     [1.0, 'P']
     >>> x = Level("1 Pa"); [x.value, x.field] 
@@ -45,7 +46,7 @@ class Level():
     [1.0, 'V']
     >>> x = Level("120dB(µV)"); [x.value, x.field] 
     [1.0, 'V']
-    >>> x = Level("180dB(nV)"); [x.value, x.field] 
+    >>> x = Level("+180dB(nV)"); [x.value, x.field] 
     [1.0, 'V']
     >>> x = Level("-60dB(kV)"); [x.value, x.field] 
     [1.0, 'V']
@@ -69,16 +70,16 @@ class Level():
                   'FS':  (1.0,     'D'),
                   'u':   (0.775,   'V')}
 
-    def __init__(self, value = 0, field = ''):
+    def __init__(self, value):
         """
         Check if 'value' is a number, in which case simply using arguments.
         Otherwise, parse 'value' for dB, references, etc.
         """
         SI = {'G':1e9, 'M':1e6, 'k':1e3, 'm':1e-3, u'µ':1e-6, 'n':1e-9, \
               ' ':1}
-        self.field = field
         if type(value) in (int, float):
             self.value = float(value)
+            self.field = ''
         else:
             if type(value) == str:
                 value = unicode(value, 'utf-8')
@@ -110,31 +111,27 @@ class Level():
                 raise ValueError("Could not parse the units '"+ref+"'")
     
     def __repr__(self):
-        """
-        Pretty print value in SI unit, and the domain with unit in parenthesis.
+        """Pretty print value in SI unit.
         
         >>> Level("0dBu")
-        0.775 Voltage (Volts)
+        0.775 V
         >>> Level("0dB SPL")
-        2e-05 Pressure (Pascals)
+        2e-05 Pa
         >>> Level("0dBFS")
-        1.0 Digital (w.r.t. FSS)
+        1.0 FS
         """
-        return str(self.value)+' '+ \
-               {'P':'Pressure (Pascals)', \
-                'V':'Voltage (Volts)', \
-                'D':'Digital (w.r.t. FSS)'}[self.field]
+        return str(self.value) + ' ' + fields2SI[self.field]
 
     def dB(self, reference = 1):
         """
         Return value in dB relative to reference.
         Recognises 'SPL', 'u', 'mV', and 'Pa', 'V', 'FS'
         
-        >>> Level(1, 'P').dB()
+        >>> Level('1Pa').dB()
         0.0
-        >>> round( Level(1, 'P').dB('SPL')  , 1)
+        >>> round( Level('1Pa').dB('SPL')  , 1)
         94.0
-        >>> Level(1, 'V').dB('u') #doctest: +ELLIPSIS
+        >>> Level('1V').dB('u') #doctest: +ELLIPSIS
         2.2...
         """
         if reference in Level.references:
@@ -177,8 +174,6 @@ class Gain():
     >>> Gain("+40 dB(V/V)")
     100.0 V/V
     """
-
-    fields2SI = {'P':'Pa', 'V':'V', 'D':'FS'}
     
     def __init__(self, inLevel, outLevel = None):
         if isinstance(inLevel, (str, unicode)):
@@ -216,7 +211,7 @@ class Gain():
         correct domain.
         
         >>> Level("0dB SPL") * Gain("40mV/Pa")
-        8e-07 Voltage (Volts)
+        8e-07 V
 
         ditto numbers
         >>> 2 * Gain("1 V/V")
@@ -224,7 +219,8 @@ class Gain():
         """
         if isinstance(other, Level):
             if other.field is self.infield:
-                return Level(other.value * self.gain, self.outfield)
+                return other.__class__(str(other.value * self.gain) + \
+                                       fields2SI[self.outfield])
             else:
                 raise ValueError, "value and gain input are different fields"
         elif type(other) in (int, float):
@@ -247,30 +243,76 @@ class Gain():
         """ 
         if isinstance(other, Gain):
             if other.infield is self.outfield:
-                return Gain(Level(1, self.infield), \
-                            Level(self.gain * other.gain, other.outfield))
+                return Gain(Level('1' + fields2SI[self.infield]), \
+                            Level(str(self.gain * other.gain) + \
+                                  fields2SI[other.outfield]))
             else:
                 raise ValueError, "inside fields of gains do not match"
         elif type(other) in (int, float):
-            return Gain(Level(1, self.infield),\
-                        Level(self.gain * other, self.outfield))
+            return Gain(Level('1' + fields2SI[self.infield]),\
+                        Level(str(self.gain * other) + \
+                              fields2SI[self.outfield]))
         else:
             raise TypeError
         return None
 
+    def __rdiv__(self, other):
+        """Perform inverse of Multiply.
 
-class GainStructure():
+        >>> Level("0dBFS") / Gain("18dBu","0dBFS") #doctest: +ELLIPSIS
+        6.15... V
+        """
+        if isinstance(other, Level):
+            if other.field is self.outfield:
+                return other.__class__(str(other.value / self.gain) + \
+                                       fields2SI[self.infield])
+            else:
+                raise ValueError, "value and gain input are different fields"
+        elif type(other) in (int, float):
+            return self / float(other)
+        else:
+            raise TypeError, "applying gain to something other than a Level"
+        return None
+
+    def __rtruediv__(self, other):
+        return __rdiv__(self, other)
+
+
+class ZonedLevel(Level):
     """
+    Extended version of Level class, also handling which 'zone' or stage in a
+    signal path the level is in.
+
+    >>> ZonedLevel("0dBu", zone=1)
+    0.775 V zone: 1
+    """
+
+    def __init__(self, value, zone = 0):
+        Level.__init__(self, value)
+        self.zone = zone
+
+    def __repr__(self):
+        return Level.__repr__(self) + " zone: " + str(self.zone)
+
+'''
+class GainStructure():
+    """Calculate system clipping and noise levels from individual components.
+
     Help work out gain structures by tracking clipping levels and noise level
     contributions at different 'zones' of a gain structure.
     Levels are internally stored in SI RMS values (Pa, V, FSS)
+
+    >>> g=GainStructure(); g.gains=[Gain("40mV/Pa"),Gain("-13dB(FS/u)")];\
+        g.levelAtZone(Level("85dB SPL"), 0, 2) #doctest: +ELLIPSIS
+    0.00410... Digital ...
+    
     """
 
     def __init__(self):
         self.gains  = [] # between zones
         self.fields = [] # {P,V,D} (pressure, voltage, or digital) for each zone
-        self.noises = [] # tuples, level and zone
-        self.clips  = [] # tuples, level and zone
+        self.noises = {} # values are tuples, level and zone
+        self.clips  = {} # values are tuples, level and zone
 
     def systemNoiseAtZone(self, zone):
         p = 0
@@ -287,11 +329,11 @@ class GainStructure():
         return ret
 
     def addClip(self, level, zone):
-        self.clips = self.clips + [[level, zone]]
+        self.clips = self.clips + [(level, zone)]
         return
 
     def addNoise(self, level, zone):
-        self.noises = self.noises + [[level, zone]]
+        self.noises = self.noises + [(level, zone)]
         return
     
     def levelAtZone(self, level, originalZone, returnZone):
@@ -309,6 +351,7 @@ class GainStructure():
             return ret
         else:
             print "shouldn't get here!!!"
+'''
 
 """Helper functions"""
 def dbta(dB):
@@ -323,6 +366,30 @@ def atp(a):
     return a ** 2
 def pta(p):
     return sqrt(p)
+
+
+def levelAtZone(gainsList, level, returnZone):
+    """
+    >>> levelAtZone([Gain("2V/V"), Gain("0.1 FS/V")], \
+                    ZonedLevel("1V", zone=0), 2)
+    0.2 FS zone: 2
+    """
+    originalZone = level.zone
+    if (originalZone == returnZone):
+        return level
+    elif (originalZone < returnZone):
+        ret = level
+        for i in range(originalZone, returnZone):
+            ret = ret * gainsList[i]
+        return ret
+    elif (originalZone > returnZone):
+        ret = level
+        for i in range(returnZone, originalZone):
+            ret = ret / gainsList[i]
+        return ret
+    else:
+        print "shouldn't get here!!!"    
+
 
 if __name__ == "__main__":
     """"gs = GainStructure()
