@@ -381,9 +381,13 @@ def pta(p):
 
 
 def levelAtZone(gainsList, level, returnZone):
-    """
-    >>> levelAtZone([Gain("2V/V"), Gain("0.1 FS/V")], \
-                    Level("1V", zone=0), 2)
+    """Calculate the level at differet zones of the gain structure.
+
+    Takes a list of Gains, the original zoned Level, and the requested return
+    zone.
+    >>> levelAtZone( [ Gain("2V/V"), Gain("0.1 FS/V") ], \
+                     Level("1V", zone=0), \
+                     2)
     0.2 FS zone: 2
     """
     originalZone = level.zone
@@ -400,7 +404,26 @@ def levelAtZone(gainsList, level, returnZone):
             ret = ret / gainsList[i]
         return ret
     else:
-        print "shouldn't get here!!!"    
+        print "shouldn't get here!!!"
+
+def powersum(gainsList, levelList, returnZone):
+    """Calculate the level of the sum of incoherant noise sources in levelList
+
+    >>> powersum( [ Gain("1 FS/V") ], \
+                  [ Level("-20dBV", 0), Level("-20dBFS", 1) ], \
+                  1) #doctest: +ELLIPSIS
+    0.1414... FS zone: 1
+
+    >>> powersum( [ Gain("1 FS/V") ], \
+                  [ Level("-60dBV", 0), Level("-20dBFS", 1) ], \
+                  1).dB('FS') #doctest: +ELLIPSIS
+    -19.999...
+    """
+    sumOfSquares = 0
+    returnField = levelAtZone(gainsList, levelList[0], returnZone).field
+    for level in levelList:
+        sumOfSquares += atp(levelAtZone(gainsList, level, returnZone).value)
+    return Level(str(pta(sumOfSquares)) + fields2SI[returnField], returnZone)
 
 
 if __name__ == "__main__":
