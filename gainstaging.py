@@ -62,6 +62,9 @@ class Level():
     [1.0, 'D']
     >>> x = Level("0 dB (FS)"); [x.value, x.field] 
     [1.0, 'D']
+
+    >>> Level("0dBu", zone=1)
+    0.775 V zone: 1
     """
 
     references = {'SPL': (0.00002, 'P'),
@@ -70,13 +73,20 @@ class Level():
                   'FS':  (1.0,     'D'),
                   'u':   (0.775,   'V')}
 
-    def __init__(self, value):
+    def __init__(self, value, zone = None):
         """
         Check if 'value' is a number, in which case simply using arguments.
         Otherwise, parse 'value' for dB, references, etc.
         """
         SI = {'G':1e9, 'M':1e6, 'k':1e3, 'm':1e-3, u'µ':1e-6, 'n':1e-9, \
               ' ':1}
+        if zone != None:
+            self.zoned = True
+            self.zone = zone
+        else:
+            self.zoned = False
+            self.zone = 0
+
         if type(value) in (int, float):
             self.value = float(value)
             self.field = ''
@@ -119,8 +129,13 @@ class Level():
         2e-05 Pa
         >>> Level("0dBFS")
         1.0 FS
+        >>> Level("0dBu", zone=1)
+        0.775 V zone: 1
         """
-        return str(self.value) + ' ' + fields2SI[self.field]
+        ret = str(self.value) + ' ' + fields2SI[self.field]
+        if self.zoned:
+            ret += " zone: " + str(self.zone)
+        return ret
 
     def dB(self, reference = 1):
         """
@@ -188,6 +203,7 @@ class Gain():
         self.gain     = outLevel.value / inLevel.value
         self.infield  = inLevel.field
         self.outfield = outLevel.field
+        self.stages = 1
 
     def __repr__(self):
         return str(self.gain)+' '+ \
@@ -213,14 +229,19 @@ class Gain():
         >>> Level("0dB SPL") * Gain("40mV/Pa")
         8e-07 V
 
+        >>> Level("0dB SPL", zone = 1) * Gain("40mV/Pa")
+        8e-07 V zone: 2
+
         ditto numbers
         >>> 2 * Gain("1 V/V")
         2.0 V/V
         """
         if isinstance(other, Level):
             if other.field is self.infield:
-                return other.__class__(str(other.value * self.gain) + \
-                                       fields2SI[self.outfield])
+                return Level(str(other.value * self.gain) + \
+                                       fields2SI[self.outfield], \
+                                       other.zone + self.stages if other.zoned \
+                                                                else None)
             else:
                 raise ValueError, "value and gain input are different fields"
         elif type(other) in (int, float):
@@ -236,6 +257,9 @@ class Gain():
 
         >>> Gain("40mV/Pa") * Gain("+18dBu","0dBFS") #doctest: +ELLIPSIS
         0.00649... FS/Pa
+        >>> ( Gain("40mV/Pa") * Gain("+18dBu","0dBFS") ).stages \
+                #doctest: +ELLIPSIS
+        2
 
         ditto numbers
         >>> Gain("1V/FS") * 10
@@ -243,56 +267,44 @@ class Gain():
         """ 
         if isinstance(other, Gain):
             if other.infield is self.outfield:
-                return Gain(Level('1' + fields2SI[self.infield]), \
-                            Level(str(self.gain * other.gain) + \
-                                  fields2SI[other.outfield]))
+                ret = Gain(Level('1' + fields2SI[self.infield]), \
+                           Level(str(self.gain * other.gain) + \
+                                 fields2SI[other.outfield]))
+                ret.stages = other.stages + self.stages
+                return ret
             else:
                 raise ValueError, "inside fields of gains do not match"
         elif type(other) in (int, float):
-            return Gain(Level('1' + fields2SI[self.infield]),\
-                        Level(str(self.gain * other) + \
-                              fields2SI[self.outfield]))
+            ret = Gain(Level('1' + fields2SI[self.infield]),\
+                       Level(str(self.gain * other) + \
+                             fields2SI[self.outfield]))
+            ret.stages = 1 + self.stages
+            return ret
         else:
             raise TypeError
         return None
 
+    def __neg__(self):
+        """Return a Gain with inverted properties.
+        >>> t= -Gain("2 V/FS"); [t, t.stages]
+        [0.5 FS/V, -1]
+        """
+        ret = Gain(str(self.gain) + fields2SI[self.outfield],\
+                   '1' + fields2SI[self.infield])
+        ret.stages = 0 - self.stages
+        return ret
+
     def __rdiv__(self, other):
         """Perform inverse of Multiply.
 
-        >>> Level("0dBFS") / Gain("18dBu","0dBFS") #doctest: +ELLIPSIS
-        6.15... V
+        >>> Level("0dBFS", zone=2) / Gain("18dBu","0dBFS") #doctest: +ELLIPSIS
+        6.15... V zone: 1
         """
-        if isinstance(other, Level):
-            if other.field is self.outfield:
-                return other.__class__(str(other.value / self.gain) + \
-                                       fields2SI[self.infield])
-            else:
-                raise ValueError, "value and gain input are different fields"
-        elif type(other) in (int, float):
-            return self / float(other)
-        else:
-            raise TypeError, "applying gain to something other than a Level"
-        return None
+        return other * -self
 
     def __rtruediv__(self, other):
         return __rdiv__(self, other)
 
-
-class ZonedLevel(Level):
-    """
-    Extended version of Level class, also handling which 'zone' or stage in a
-    signal path the level is in.
-
-    >>> ZonedLevel("0dBu", zone=1)
-    0.775 V zone: 1
-    """
-
-    def __init__(self, value, zone = 0):
-        Level.__init__(self, value)
-        self.zone = zone
-
-    def __repr__(self):
-        return Level.__repr__(self) + " zone: " + str(self.zone)
 
 '''
 class GainStructure():
@@ -371,7 +383,7 @@ def pta(p):
 def levelAtZone(gainsList, level, returnZone):
     """
     >>> levelAtZone([Gain("2V/V"), Gain("0.1 FS/V")], \
-                    ZonedLevel("1V", zone=0), 2)
+                    Level("1V", zone=0), 2)
     0.2 FS zone: 2
     """
     originalZone = level.zone
