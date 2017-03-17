@@ -151,9 +151,6 @@ class Level():
         """
         if reference in Level.references:
             reference = Level.references[reference][0]
-        #try:
-        #reference = float(reference)
-        #except ValueError:
         if self.value == 0:
             return float('-inf')
         else:
@@ -257,8 +254,7 @@ class Gain():
 
         >>> Gain("40mV/Pa") * Gain("+18dBu","0dBFS") #doctest: +ELLIPSIS
         0.00649... FS/Pa
-        >>> ( Gain("40mV/Pa") * Gain("+18dBu","0dBFS") ).stages \
-                #doctest: +ELLIPSIS
+        >>> ( Gain("40mV/Pa") * Gain("+18dBu","0dBFS") ).stages
         2
 
         ditto numbers
@@ -305,65 +301,6 @@ class Gain():
     def __rtruediv__(self, other):
         return __rdiv__(self, other)
 
-
-'''
-class GainStructure():
-    """Calculate system clipping and noise levels from individual components.
-
-    Help work out gain structures by tracking clipping levels and noise level
-    contributions at different 'zones' of a gain structure.
-    Levels are internally stored in SI RMS values (Pa, V, FSS)
-
-    >>> g=GainStructure(); g.gains=[Gain("40mV/Pa"),Gain("-13dB(FS/u)")];\
-        g.levelAtZone(Level("85dB SPL"), 0, 2) #doctest: +ELLIPSIS
-    0.00410... Digital ...
-    
-    """
-
-    def __init__(self):
-        self.gains  = [] # between zones
-        self.fields = [] # {P,V,D} (pressure, voltage, or digital) for each zone
-        self.noises = {} # values are tuples, level and zone
-        self.clips  = {} # values are tuples, level and zone
-
-    def systemNoiseAtZone(self, zone):
-        p = 0
-        for i in self.noises:
-            p = p + atp(self.levelAtZone(i[0],i[1], zone))
-        return pta(p)
-
-    def systemClipAtZone(self, zone):
-        ret = float('+inf')
-        for i in self.clips:
-            t = self.levelAtZone(i[0],i[1], zone)
-            if t < ret :
-                ret = t
-        return ret
-
-    def addClip(self, level, zone):
-        self.clips = self.clips + [(level, zone)]
-        return
-
-    def addNoise(self, level, zone):
-        self.noises = self.noises + [(level, zone)]
-        return
-    
-    def levelAtZone(self, level, originalZone, returnZone):
-        if (originalZone == returnZone):
-            return level
-        elif (originalZone < returnZone):
-            ret = level
-            for i in range(originalZone, returnZone):
-                ret = ret * self.gains[i]
-            return ret
-        elif (originalZone > returnZone):
-            ret = level
-            for i in range(returnZone, originalZone):
-                ret = ret / float(self.gains[i])
-            return ret
-        else:
-            print "shouldn't get here!!!"
-'''
 
 """Helper functions"""
 def dbta(dB):
@@ -466,12 +403,3 @@ def findClip(gainsList, levelList):
         return clipper
     else:
         raise TypeError
-
-if __name__ == "__main__":
-    """"gs = GainStructure()
-    gs.fields = ['P','V','V','D']
-    gs.gains = [0.04, 1, dbta(-10.5)]
-    gs.addClip(dbta(132-94),0)
-    gs.addNoise(dbta(15-94),0)
-    print gs.systemNoiseAtZone(3)
-    """
