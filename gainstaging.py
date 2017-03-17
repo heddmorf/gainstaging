@@ -61,13 +61,14 @@ class Level():
     [1.0, 'D']
     >>> x = Level("0 dB (FS)"); [x.value, x.field] 
     [1.0, 'D']
-
     """
+
     references = {'SPL': (0.00002, 'P'),
                   'Pa':  (1.0,     'P'),
                   'V':   (1.0,     'V'),
                   'FS':  (1.0,     'D'),
                   'u':   (0.775,   'V')}
+
     def __init__(self, value = 0, field = ''):
         """
         Check if 'value' is a number, in which case simply using arguments.
@@ -81,6 +82,7 @@ class Level():
         else:
             if type(value) == str:
                 value = unicode(value, 'utf-8')
+                
             for i in range(len(value), 0, -1):
                 try:
                     self.value = float(value[:i])
@@ -122,6 +124,7 @@ class Level():
                {'P':'Pressure (Pascals)', \
                 'V':'Voltage (Volts)', \
                 'D':'Digital (w.r.t. FSS)'}[self.field]
+
     def dB(self, reference = 1):
         """
         Return value in dB relative to reference.
@@ -144,16 +147,6 @@ class Level():
         else:
             return 20*log10(self.value / reference)
 
-'''references = {'Pa': Level("1 Pa") \
-             ,'SPL':Level("0.00002 Pa") \
-             ,'FS': Level(1,'FS') \
-             ,'V':  Level("1 V") \
-             ,'mV': Level("0.001 V") \
-             ,'u':  Level("0.775 V") \
-             }
-             '''
-fields2SI = {'P':'Pa', 'V':'V', 'D':'FSS'}
-
 class Gain():
     """
     A class representing gains in an audio signal path.  Keeps track of the
@@ -164,11 +157,11 @@ class Gain():
     >>> Gain(Level('1Pa'), Level('2V'))
     2.0 V/Pa
     >>> Gain(Level("+18dBu"), Level("0dBFS")) #doctest: +ELLIPSIS
-    0.162... FSS/V
+    0.162... FS/V
 
     If arguments are strings, they are casted to a Level instance:
     >>> Gain("+4dBu","0.1FS") #doctest: +ELLIPSIS
-    0.0814... FSS/V
+    0.0814... FS/V
 
     Can be used with one argument, allowing a gain using a '/' to show the two
     units, as in:
@@ -177,13 +170,16 @@ class Gain():
     
     This works with dB as well:
     >>> Gain("-18dB(FS/u)") #doctest: +ELLIPSIS
-    0.162... FSS/V
+    0.162... FS/V
 
     Gains within a single domain still need to show the domains, to preserve
     domains.
     >>> Gain("+40 dB(V/V)")
     100.0 V/V
     """
+
+    fields2SI = {'P':'Pa', 'V':'V', 'D':'FS'}
+    
     def __init__(self, inLevel, outLevel = None):
         if isinstance(inLevel, (str, unicode)):
             if '/' in inLevel:
@@ -197,9 +193,11 @@ class Gain():
         self.gain     = outLevel.value / inLevel.value
         self.infield  = inLevel.field
         self.outfield = outLevel.field
+
     def __repr__(self):
         return str(self.gain)+' '+ \
                fields2SI[self.outfield]+'/'+fields2SI[self.infield]
+
     def dB(self):
         """
         Return pretty-print string of the gain in dB
@@ -207,10 +205,11 @@ class Gain():
         >>> Gain("10V/Pa").dB()
         '20.0 dB(V/Pa)'
         >>> Gain("+18dBu","0dBFS").dB() #doctest: +ELLIPSIS
-        '-15.78... dB(FSS/V)'
+        '-15.78... dB(FS/V)'
         """
         return str(20 * log10(self.gain))+' dB('+ \
                fields2SI[self.outfield]+'/'+fields2SI[self.infield]+')'
+
     def __rmul__(self, other):
         """
         A Level can be multiplied by a Gain to produce a new Level in the
@@ -233,17 +232,18 @@ class Gain():
         else:
             raise TypeError, "applying gain to something other than a Level"
         return None
+
     def __mul__(self, other):
         """
         Gains can be multiplied together, creating a new gain and daisy-
         chaining the domains.
 
         >>> Gain("40mV/Pa") * Gain("+18dBu","0dBFS") #doctest: +ELLIPSIS
-        0.00649... FSS/Pa
+        0.00649... FS/Pa
 
         ditto numbers
         >>> Gain("1V/FS") * 10
-        10.0 V/FSS
+        10.0 V/FS
         """ 
         if isinstance(other, Gain):
             if other.infield is self.outfield:
@@ -258,6 +258,7 @@ class Gain():
             raise TypeError
         return None
 
+
 class GainStructure():
     """
     Help work out gain structures by tracking clipping levels and noise level
@@ -265,19 +266,18 @@ class GainStructure():
     Levels are internally stored in SI RMS values (Pa, V, FSS)
     """
 
-    #from math import log10, sqrt
-    
-    #def Level as [number, unitid]
     def __init__(self):
         self.gains  = [] # between zones
-        self.fields = [] # {P,V,D} (pressure, voltage, or digital), for each zone
+        self.fields = [] # {P,V,D} (pressure, voltage, or digital) for each zone
         self.noises = [] # tuples, level and zone
         self.clips  = [] # tuples, level and zone
+
     def systemNoiseAtZone(self, zone):
         p = 0
         for i in self.noises:
             p = p + atp(self.levelAtZone(i[0],i[1], zone))
         return pta(p)
+
     def systemClipAtZone(self, zone):
         ret = float('+inf')
         for i in self.clips:
@@ -285,9 +285,11 @@ class GainStructure():
             if t < ret :
                 ret = t
         return ret
+
     def addClip(self, level, zone):
         self.clips = self.clips + [[level, zone]]
         return
+
     def addNoise(self, level, zone):
         self.noises = self.noises + [[level, zone]]
         return
@@ -308,7 +310,7 @@ class GainStructure():
         else:
             print "shouldn't get here!!!"
 
-
+"""Helper functions"""
 def dbta(dB):
     return pow(10, dB / 20.)
 def atdb(a):
@@ -323,9 +325,10 @@ def pta(p):
     return sqrt(p)
 
 if __name__ == "__main__":
-    gs = GainStructure()
+    """"gs = GainStructure()
     gs.fields = ['P','V','V','D']
     gs.gains = [0.04, 1, dbta(-10.5)]
     gs.addClip(dbta(132-94),0)
     gs.addNoise(dbta(15-94),0)
     print gs.systemNoiseAtZone(3)
+    """
