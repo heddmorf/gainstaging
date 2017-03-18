@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/heddmorf/gainstaging.svg?branch=master)](https://travis-ci.org/heddmorf/gainstaging)
+
 # gainstaging
 A utility to help calculate and keep track of levels and gains within the gain structure of an audio signal chain.
 
